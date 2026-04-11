@@ -1,0 +1,67 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// GitHub Copilot — User-level VS Code settings
+//
+// Merge these into your USER settings.json:
+//   Mac/Linux: $HOME/Library/Application Support/Code/User/settings.json
+//   Windows:   %APPDATA%\Code\User\settings.json
+//   (or Cmd/Ctrl+Shift+P → "Preferences: Open User Settings (JSON)")
+//
+// Then copy the copilot/ folder to: $HOME/.config/copilot/
+// ─────────────────────────────────────────────────────────────────────────────
+{
+  // ── Copilot Chat: always load the global constitution ─────────────────────
+  "github.copilot.chat.codeGeneration.useInstructionFiles": true,
+  "github.copilot.chat.codeGeneration.instructions": [
+    {
+      "file": "${userHome}/.config/copilot/copilot-instructions.md"
+    }
+  ],
+  "github.copilot.chat.reviewSelection.instructions": [
+    {
+      "file": "${userHome}/.config/copilot/copilot-instructions.md"
+    }
+  ],
+  "github.copilot.chat.testGeneration.instructions": [
+    {
+      "file": "${userHome}/.config/copilot/copilot-instructions.md"
+    },
+    {
+      "file": "${userHome}/.config/copilot/instructions/tests.instructions.md"
+    }
+  ],
+  "github.copilot.chat.commitMessageGeneration.instructions": [
+    {
+      "text": "Imperative mood. Subject ≤ 72 chars. Body explains why, not what. No co-author lines. No emoji."
+    }
+  ],
+
+  // ── Per-language instruction files (auto-attached by glob) ─────────────────
+  "chat.instructionsFilesLocations": {
+    "${userHome}/.config/copilot/instructions": true
+  },
+
+  // ── Prompt files (/review, /tdd, /debug, /refactor in chat) ───────────────
+  "chat.promptFiles": true,
+  "chat.promptFilesLocations": {
+    "${userHome}/.config/copilot/prompts": true
+  },
+
+  // ── Agent / custom mode files (orchestrator + sub-agents) ─────────────────
+  "chat.modeFilesLocations": {
+    "${userHome}/.config/copilot/agents": true
+  },
+
+  // ── Inline completions: respect the elegance bar ──────────────────────────
+  "github.copilot.editor.enableCodeActions": true,
+
+  // ── Agent mode: allow running terminal commands in the pipeline ───────────
+  "github.copilot.chat.agent.runTasks": true,
+
+  // ── Experimental: multi-file edits (implementer diffs across files) ────────
+  "github.copilot.chat.edits.enabled": true,
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Windows users: replace ${userHome} with ${env:USERPROFILE} throughout
+  //   e.g. "${env:USERPROFILE}/.config/copilot/copilot-instructions.md"
+  // ─────────────────────────────────────────────────────────────────────────
+}
