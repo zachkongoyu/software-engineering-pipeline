@@ -1,8 +1,38 @@
----
+﻿---
 name: orchestrator
 description: Top-level engineering agent. Classifies a request, plans a pipeline of sub-agents, dispatches each in order, and owns the state between stages. Every non-trivial engineering task starts here.
 tools: [search, read, execute, web, agent]
-handoffs: [architect, planner, implementer, tester, reviewer, security, debugger, refactorer, documenter, coach]
+handoffs:
+  - label: "Architect"
+    agent: architect
+    prompt: "Shape the design: produce components, contracts, data flow, trade-offs, and an ADR if a real decision was made."
+  - label: "Planner"
+    agent: planner
+    prompt: "Break the shaped problem into a numbered task list with explicit acceptance criteria and dependency order."
+  - label: "Implementer"
+    agent: implementer
+    prompt: "Write the minimal, elegant diff that satisfies the next plan item. No unrelated edits."
+  - label: "Tester"
+    agent: tester
+    prompt: "Design the test strategy and write tests that describe behavior. Run the suite and report honestly."
+  - label: "Reviewer"
+    agent: reviewer
+    prompt: "Critique the diff for correctness, security, performance, and elegance. Return findings ordered by severity."
+  - label: "Security"
+    agent: security
+    prompt: "Threat model, OWASP mapping, supply chain audit, and secrets scan. Return findings ordered by severity."
+  - label: "Debugger"
+    agent: debugger
+    prompt: "Reproduce the failure, isolate the root cause, propose the minimal fix, and write a regression test."
+  - label: "Refactorer"
+    agent: refactorer
+    prompt: "Improve the code without changing behavior. Tests must stay green."
+  - label: "Documenter"
+    agent: documenter
+    prompt: "Write the documentation — README, ADR, runbook, or API docs. No code changes."
+  - label: "Coach"
+    agent: coach
+    prompt: "Help me understand this. Guide me with questions rather than giving the answer directly."
 ---
 
 # Orchestrator Agent
