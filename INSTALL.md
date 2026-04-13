@@ -1,4 +1,4 @@
-# Install Guide
+﻿# Install Guide
 
 All files are **user-level** — install once and every project inherits them.
 
@@ -10,20 +10,22 @@ All files are **user-level** — install once and every project inherits them.
 
 ```bash
 # macOS / Linux
-mkdir -p ~/.config/copilot
-cp -R copilot/agents        ~/.config/copilot/agents
-cp -R copilot/instructions  ~/.config/copilot/instructions
-cp -R copilot/prompts       ~/.config/copilot/prompts
-cp    copilot/copilot-instructions.md  ~/.config/copilot/copilot-instructions.md
+mkdir -p ~/.copilot/agents ~/.copilot/instructions ~/.copilot/prompts
+cp -R copilot/agents/*.agent.md   ~/.copilot/agents/
+cp -R copilot/instructions/       ~/.copilot/instructions/
+cp -R copilot/prompts/            ~/.copilot/prompts/
+cp    copilot/copilot-instructions.md  ~/.copilot/copilot-instructions.md
 ```
 
 ```powershell
 # Windows (PowerShell)
-New-Item -ItemType Directory -Force -Path $HOME\.config\copilot | Out-Null
-Copy-Item copilot\agents       $HOME\.config\copilot\agents       -Recurse -Force
-Copy-Item copilot\instructions $HOME\.config\copilot\instructions -Recurse -Force
-Copy-Item copilot\prompts      $HOME\.config\copilot\prompts      -Recurse -Force
-Copy-Item copilot\copilot-instructions.md $HOME\.config\copilot\copilot-instructions.md
+New-Item -ItemType Directory -Force -Path $HOME\.copilot\agents       | Out-Null
+New-Item -ItemType Directory -Force -Path $HOME\.copilot\instructions | Out-Null
+New-Item -ItemType Directory -Force -Path $HOME\.copilot\prompts      | Out-Null
+Copy-Item copilot\agents\*.agent.md   $HOME\.copilot\agents\
+Copy-Item copilot\instructions\*      $HOME\.copilot\instructions\ -Recurse -Force
+Copy-Item copilot\prompts\*           $HOME\.copilot\prompts\      -Recurse -Force
+Copy-Item copilot\copilot-instructions.md $HOME\.copilot\copilot-instructions.md
 ```
 
 ### 1b. Wire VS Code
@@ -34,22 +36,22 @@ Open your **user** `settings.json` (`Cmd/Ctrl+Shift+P` → *Preferences: Open Us
 {
   "github.copilot.chat.codeGeneration.useInstructionFiles": true,
   "github.copilot.chat.codeGeneration.instructions": [
-    { "file": "${userHome}/.config/copilot/copilot-instructions.md" }
+    { "file": "~/.copilot/copilot-instructions.md" }
   ],
   "chat.instructionsFilesLocations": {
-    "${userHome}/.config/copilot/instructions": true
+    "~/.copilot/instructions": true
   },
   "chat.promptFiles": true,
   "chat.promptFilesLocations": {
-    "${userHome}/.config/copilot/prompts": true
+    "~/.copilot/prompts": true
   },
-  "chat.modeFilesLocations": {
-    "${userHome}/.config/copilot/agents": true
+  "chat.agentFilesLocations": {
+    "~/.copilot/agents": true
   }
 }
 ```
 
-> **Windows:** replace `${userHome}` with `${env:USERPROFILE}` throughout.
+> **Note:** `~` is resolved by VS Code in all settings. Do not use `${userHome}` or `${env:USERPROFILE}` as map keys — they are not expanded in that position.
 
 ### 1c. What each piece does
 
@@ -120,14 +122,14 @@ Save as `install.sh` in this directory and run `bash install.sh`:
 #!/usr/bin/env bash
 set -euo pipefail
 
-COPILOT_DIR="$HOME/.config/copilot"
+COPILOT_DIR="$HOME/.copilot"
 CLAUDE_DIR="$HOME/.claude"
 
 echo "→ Installing Copilot config to $COPILOT_DIR"
-mkdir -p "$COPILOT_DIR"
-cp -R copilot/agents        "$COPILOT_DIR/agents"
-cp -R copilot/instructions  "$COPILOT_DIR/instructions"
-cp -R copilot/prompts       "$COPILOT_DIR/prompts"
+mkdir -p "$COPILOT_DIR/agents" "$COPILOT_DIR/instructions" "$COPILOT_DIR/prompts"
+cp -R copilot/agents/*.agent.md   "$COPILOT_DIR/agents/"
+cp -R copilot/instructions/       "$COPILOT_DIR/instructions/"
+cp -R copilot/prompts/            "$COPILOT_DIR/prompts/"
 cp    copilot/copilot-instructions.md "$COPILOT_DIR/copilot-instructions.md"
 
 echo "→ Installing Claude Code config to $CLAUDE_DIR"

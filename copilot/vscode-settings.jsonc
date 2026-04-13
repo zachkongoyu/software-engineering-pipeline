@@ -37,18 +37,18 @@
 
   // ── Per-language instruction files (auto-attached by glob) ─────────────────
   "chat.instructionsFilesLocations": {
-    "${userHome}/.config/copilot/instructions": true
+    "~/.copilot/instructions": true
   },
 
   // ── Prompt files (/review, /tdd, /debug, /refactor in chat) ───────────────
   "chat.promptFiles": true,
   "chat.promptFilesLocations": {
-    "${userHome}/.config/copilot/prompts": true
+    "~/.copilot/prompts": true
   },
 
   // ── Agent / custom mode files (orchestrator + sub-agents) ─────────────────
-  "chat.modeFilesLocations": {
-    "${userHome}/.config/copilot/agents": true
+  "chat.agentFilesLocations": {
+    "~/.copilot/agents": true
   },
 
   // ── Inline completions: respect the elegance bar ──────────────────────────
