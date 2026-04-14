@@ -417,3 +417,286 @@ after all components have been composed and before token truncation.
    Rendered tree → messages array → API call
    Written to system_prompt_0.json in debug logs
 ```
+
+---
+
+## Token Budgeting & Priority Trimming
+
+The prompt renderer implements a **CSS-flexbox-inspired token allocation**
+system. Each component declares layout hints:
+
+| Prop | Meaning |
+|------|---------|
+| `priority` | Retention priority. Lower = trimmed first when over budget |
+| `flexGrow` | Growth order. Lower value = rendered earlier, gets first claim on tokens. Default `Infinity` (render last) |
+| `flexReserve` | Token count reserved for lower-`flexGrow` components. Can be absolute (`500`) or fractional (`"/3"` = 1/3 of remaining) |
+| `flexBasis` | Relative share when multiple components share the same `flexGrow` level |
+| `passPriority` | If false, child priorities are self-contained |
+
+### Rendering Algorithm (`_processPromptPieces`)
+
+```
+1. SORT by flexGrow (ascending — lower grows first)
+2. For each flexGrow level:
+   a. Calculate RESERVES for all later-level components
+   b. Consume reserved tokens from remaining budget
+   c. Distribute remaining budget across components at this level
+      proportional to flexBasis (default 1)
+   d. Call prepare() then render() with per-component tokenBudget
+   e. Process children recursively
+   f. Release reserves back to pool
+3. Result: a materialized tree of messages/chunks with token counts
+```
+
+### Over-Budget Trimming (`_getFinalElementTree`)
+
+After the tree is fully materialized:
+
+```
+1. Compute total tokenCount
+2. While tokenCount > limit:
+   a. Find the lowest-priority leaf node (s_t)
+      - Walk all children depth-first
+      - Track ties by comparing nested priority (lowestNested)
+   b. Remove that node and subtract its upperBoundTokenCount × 1.25
+   c. Recompute actual tokenCount
+3. If removal causes BudgetExceededError (no removable nodes left),
+   the error carries the partial messages + metadata for debugging
+```
+
+### Growable Sections (Expandable)
+
+Components using `<Expandable>` are re-rendered with surplus tokens:
+
+```
+1. After initial render + trimming, check if tokenCount < budget
+2. For each Expandable component:
+   a. Re-render with tokenBudget = (surplus + initialConsume)
+   b. Replace old node with new materialized tree
+   c. If new total >= budget, stop growing
+```
+
+### TokenLimit Scoping
+
+`<TokenLimit max={N}>` creates a nested budget scope. A component inside
+a `TokenLimit` is trimmed independently against that local cap, not just
+the global model budget. Used for tool results and conversation history.
+
+---
+
+## Message Routing (`en` / InstructionMessage)
+
+The `en` class routes instructions to the correct message role based on
+model family:
+
+```javascript
+// d_n(family) returns true for "claude-3.5-sonnet"
+render() {
+  if (d_n(this.promptEndpoint.family))
+    return <UserMessage>{children}</UserMessage>;   // Sonnet 3.5 → User
+  else
+    return <SystemMessage>{children}</SystemMessage>; // Everything else → System
+}
+```
+
+**Why**: Claude 3.5 Sonnet performs better when instructions are in
+the user role. All other models (GPT, Gemini, other Claude versions)
+receive instructions in the system role.
+
+---
+
+## History Ordering (`Ki` / HistoryWithInstructions)
+
+The `Ki` component controls whether conversation history appears
+**before** or **after** the instruction messages:
+
+```javascript
+// R9(family) returns true for "claude-3.5-sonnet"
+render() {
+  const historyFirst = R9(this.promptEndpoint.family);
+  return <>
+    {historyFirst ? <History .../> : null}
+    {...instructionChildren}
+    {historyFirst ? null : <History .../>}
+  </>;
+}
+```
+
+| Model Family | History Position |
+|---|---|
+| Claude 3.5 Sonnet | **Before** instructions |
+| All others | **After** instructions |
+
+---
+
+## Cache Breakpoints
+
+Cache breakpoints are `<cacheBreakpoint type="ephemeral">` elements
+that tell Anthropic's API where to cache prompt prefixes. Placement:
+
+```
+┌─ System Message ──────────────────────┐
+│  Role identity + Safety + Instructions│
+│  Model-specific prompt                │
+│  Custom instructions + Context        │
+│  <cacheBreakpoint type="ephemeral">   │  ← Breakpoint 1: after system+context
+└───────────────────────────────────────┘
+
+┌─ Tool Call Rounds ────────────────────┐
+│  Round 1: tool calls + results        │
+│  Round 2: tool calls + results        │
+│  Round N (last): tool calls + results │
+│  <cacheBreakpoint type="ephemeral">   │  ← Breakpoint 2: after last round
+└───────────────────────────────────────┘
+```
+
+- Only placed when `enableCacheBreakpoints` is true (R8 history mode)
+- The second breakpoint is conditional: `isLast && enableCacheBreakpoints`
+- P7e (simple history mode) never uses cache breakpoints
+- The cache type is always `"ephemeral"` (`o_` constant)
+
+---
+
+## Conversation Compaction (Summarization)
+
+When the conversation grows too large, the `iEe` (ConversationHistorySummarizer)
+compresses history into a summary. Two modes:
+
+### Full Mode (`l$e`)
+Uses the complete XQn compaction prompt (see `conversation-compaction.md`).
+The model receives the full conversation history and produces a structured
+summary with 8 sections (overview, technical foundation, codebase status,
+problem resolution, progress tracking, active work state, recent operations,
+continuation plan).
+
+### Simple Mode (`c$e`)
+A token-priority-based compression without model summarization:
+- First message always kept at max priority
+- Remaining messages in a `PrioritizedList` (oldest trimmed first)
+- Tool arguments truncated to 200 chars
+- Tool results truncated to `maxToolResultLength / 2`
+
+### Summarization Pipeline
+
+```
+1. Check config: if AgentHistorySummarizationMode == "simple" → simple
+2. Otherwise, try "full" mode
+3. If full mode fails → fallback to "simple"
+4. Execute PreCompact lifecycle hook (if registered)
+5. Render the summarization prompt (oEe) against the endpoint
+6. Send to model, get summary text
+7. Append transcript fallback path (if transcript service active):
+   "use read_file to look up the full uncompacted transcript at: {path}"
+8. Replace compacted history with <conversation-summary>{summary}</conversation-summary>
+```
+
+### Inline vs Triggered Summarization
+
+| Mode | Trigger | Mechanism |
+|---|---|---|
+| `triggerSummarize` | Separate summarization request | Model produces summary in a dedicated call; result replaces history |
+| `inlineSummarization` | Mid-stream injection | A UserMessage is injected telling the model to output `<summary>...</summary>` tags inline |
+
+### Transcript Storage
+
+The `sessionTranscriptService` persists the full uncompacted conversation
+to a file. After compaction, the summary includes a fallback:
+
+```
+If you need specific details from before compaction, use the read_file
+tool to look up the full uncompacted conversation transcript at: "{path}"
+At the time of this request, the transcript has {N} lines.
+Example usage: read_file(filePath: "{path}")
+```
+
+---
+
+## Opaque Content Parts
+
+The renderer supports opaque (non-text) content parts via `<opaque>` elements.
+Five types exist:
+
+| Type (`mc` enum) | Purpose |
+|---|---|
+| `cache_control` | Cache breakpoint markers (see above) |
+| `stateful_marker` | Server-side session state tracking. `invalid_stateful_marker` → "Your chat session state is invalid, please start a new chat." |
+| `thinking` | Model reasoning/thinking data. Rendered by `dte` class with `tokenUsage` tracking |
+| `context_management` | Anthropic server-side context editing. Reports `cleared_input_tokens`, `cleared_tool_uses`, `cleared_thinking_turns` |
+| `phase_data` | Internal phase tracking metadata |
+
+---
+
+## Anthropic-Specific Request Headers
+
+For Claude models (Messages API, request types 7/9), extra headers are
+conditionally added:
+
+```
+anthropic-beta: [comma-separated list]
+  - "interleaved-thinking-2025-05-14"    (if !supportsAdaptiveThinking)
+  - "context-management-2025-06-27"      (if n1() config check passes)
+  - "advanced-tool-use-2025-11-20"       (if Um() config check passes)
+
+X-Model-Provider-Preference: {value}     (if TeamInternal.ModelProviderPreference set)
+```
+
+---
+
+## Model Capability Flags
+
+The `PromptEndpoint` class tracks capabilities that affect prompt assembly:
+
+| Flag | Effect |
+|---|---|
+| `supportsAdaptiveThinking` | If false, adds `interleaved-thinking-2025-05-14` beta header |
+| `minThinkingBudget` / `maxThinkingBudget` | Bounds for thinking token allocation |
+| `supportsReasoningEffort` | Whether the model supports `reasoning_effort` parameter |
+| `thinking_budget` | Token budget for model thinking/reasoning |
+| `maxPromptImages` | Limits vision content in prompts |
+| `useMessagesApi` | Anthropic Messages API vs OpenAI Completions API |
+| `useResponsesApi` | OpenAI Responses API (newer) |
+| `customModel` | Whether this is a user-contributed model |
+
+---
+
+## Materialized Tree Types
+
+The rendering pipeline produces a tree of these node types:
+
+| Class | Role |
+|---|---|
+| `UL` (GenericMaterializedContainer) | Container node with children, priority, flags |
+| `e1` (MaterializedChatMessage) | A single chat message (role, name, toolCalls, toolCallId) |
+| `V_e` (MaterializedChatMessageTextChunk) | A text fragment with priority |
+| `XS` (MaterializedChatMessageBreakpoint) | A cache breakpoint marker |
+| `Xz` (MaterializedChatMessageImage) | An image content part |
+| `ej` (MaterializedChatMessageDocument) | A document content part |
+| `Z9` (MaterializedChatMessageOpaque) | An opaque content part (thinking, etc.) |
+
+### Container Flags
+
+| Flag (bitmask) | Meaning |
+|---|---|
+| `1` | `ForceRemoval` — children can be force-removed during trimming |
+| `2` | `Atomic` — remove entire node, don't recurse into children |
+| `4` | `PassPriority` — container is transparent for priority traversal |
+| `8` | `EmptyAlternate` — has exactly 2 children; use second if non-empty, else first |
+
+---
+
+## Prompt Element Primitives
+
+| Component | Purpose |
+|---|---|
+| `SystemMessage` (`C8e`) | System-role message wrapper |
+| `UserMessage` (`x8e`) | User-role message wrapper |
+| `AssistantMessage` (`E8e`) | Assistant-role message wrapper |
+| `ToolMessage` (`d_t`) | Tool-role message wrapper |
+| `TextChunk` (`I8e`) | Text with `breakOn` / `breakOnWhitespace` for token-aware splitting |
+| `PrioritizedList` (`A_t`) | Auto-assigns descending/ascending priorities to children |
+| `TokenLimit` (`y_t`) | Scoped token budget cap |
+| `Expandable` (`b_t`) | Lazy-rendered section that grows with surplus budget |
+| `IfEmpty` (`v_t`) | Shows alt content when primary is empty (uses `EmptyAlternate` flag) |
+| `Chunk` (`h_t`) | Generic grouping container |
+| `ToolResult` (`f_t`) | Renders tool result content |
+| `LegacyPrioritization` (`g_t`) | Backward-compat priority wrapper |
